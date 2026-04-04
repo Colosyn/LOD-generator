@@ -73,4 +73,4 @@ MIT — free to use, modify, and distribute.
 
 ---
 
-Made by [ColosynStudio](https://gumroad.com/colosyn)
+Made by [ColosynStudio](https://colosynstudio.gumroad.com/)
