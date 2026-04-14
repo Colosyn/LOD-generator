@@ -1,7 +1,7 @@
 bl_info = {
     "name": "LOD Generator (Unreal and Unity Ready)",
     "author": "ColosynStudio",
-    "version": (1, 0, 0),
+    "version": (1, 1, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > LOD Gen",
     "description": "Batch LOD generation and export for Unreal and Unity",
@@ -270,12 +270,18 @@ class LOD_OT_EXPORT(Operator):
     
     def execute(self, context):
         settings = context.scene.lod_settings
-        filepath = Path(settings.file_path)
         makefolder = settings.make_folder
         
         if len(settings.file_path) == 0:
             self.report({"WARNING"}, "No File path selected")
             return {"CANCELLED"}
+        
+        filepath = Path(bpy.path.abspath(settings.file_path))
+        
+        if not filepath.is_absolute():
+          self.report({'WARNING'}, "Could not resolve export path. Save your .blend file first.")
+          return {'CANCELLED'}
+      
         
         #──── Checking if LOD collection exist and if any LOD group in it ──────────────────────     
         if  not "LOD"  in bpy.data.collections:
@@ -331,10 +337,11 @@ class LOD_OT_EXPORT(Operator):
             #──── Exporting path logic ──────────────────────
             if makefolder:
                 folder_file = filepath / f"{obj.name}"
-                folder_file.mkdir(exist_ok=True)
-                export_path = folder_file /  f"{obj.name}.FBX"
+                folder_file.mkdir(parents=True, exist_ok=True)
+                export_path = (folder_file /  f"{obj.name}.FBX").resolve()
             else:
-                export_path = filepath / f"{obj.name}.FBX"
+                filepath.mkdir(parents=True, exist_ok=True)
+                export_path = (filepath / f"{obj.name}.FBX").resolve()
                 
             if export_path.exists():
                 self.report({'WARNING'},f"{obj.name}.fbx already exists, overwriting")
