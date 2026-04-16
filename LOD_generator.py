@@ -1,7 +1,7 @@
 bl_info = {
     "name": "LOD Generator (Unreal and Unity Ready)",
-    "author": "ColosynStudio",
-    "version": (1, 1, 0),
+    "author": "Colosyn",
+    "version": (1, 2, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > LOD Gen",
     "description": "Batch LOD generation and export for Unreal and Unity",
@@ -13,6 +13,7 @@ import re
 import bpy
 from bpy.props import IntProperty, FloatProperty, PointerProperty, BoolProperty, StringProperty
 from bpy.types import PropertyGroup, Operator, Panel
+import math
 
 
 # ─────────────────────────────────────────────
@@ -30,7 +31,25 @@ class LODSettings(PropertyGroup):
     unreal_mode: BoolProperty(
         name="unreal export",
         description= "Enable Unreal Naming Convention and property",
-        default= True
+        default= True,
+    )
+    
+    merge_vertices : BoolProperty(
+        name = "Merge vertices",
+        description = "Merge vertice befor LOD Generation",
+        default = False,
+    )
+    
+    apply_scale_rotation : BoolProperty(
+        name = "scale & rotation",
+        description = "Apply scale and rotation on mesh",
+        default = False,
+    ) 
+    
+    recalculate_normal : BoolProperty(
+        name = "Recalculate normals",
+        description = "Tranfer normals from lod 0",
+        default = False,
     )
 
     lod_1_keep: FloatProperty(name="LOD1", min=0.01, max=0.99, default=0.75, subtype='FACTOR')
@@ -210,6 +229,23 @@ class LOD_OT_Generate(Operator):
             for col in old_collection:
                 if col != LOD_col: 
                   col.objects.unlink(lod0)
+                  
+            context.view_layer.objects.active = lod0
+            lod0.select_set(True)
+            
+            # ── 4. Merge dubplicate verts ───────────────────────────────── 
+            if settings.merge_vertices :
+              bpy.ops.object.mode_set(mode="EDIT")
+              bpy.ops.mesh.select_all(action="SELECT")
+              bpy.ops.mesh.remove_doubles()
+              bpy.ops.object.mode_set(mode="OBJECT")
+              
+             # ── 4. Apply scale & rotation ───────────────────────────────── 
+            if settings.apply_scale_rotation :
+              bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+                     
+            lod0.select_set(False)
+              
 
             
 
@@ -237,6 +273,20 @@ class LOD_OT_Generate(Operator):
                 dec = lod_obj.modifiers.new(name="LOD_Decimate", type='DECIMATE')
                 dec.ratio = max(0.01, keep_ratio)  # clamp to avoid 0 (full collapse)
                 dec.use_collapse_triangulate = True
+               
+               
+                # ── applying data tranfer addon to recalculate normals─────────────────
+                if settings.recalculate_normal : 
+                   
+                   if bpy.app.version < (4,1,0):
+                      lod_obj.data.use_auto_smooth = True
+                      lod_obj.data.auto_smooth_angle = math.radians(180)
+                    
+                   data_transfer = lod_obj.modifiers.new(name="LOD_DataTransfer", type="DATA_TRANSFER")
+                   data_transfer.object = lod0
+                   data_transfer.use_loop_data = True
+                   data_transfer.loop_mapping = "POLYINTERP_LNORPROJ"
+                   data_transfer.data_types_loops = {"CUSTOM_NORMAL"}
                 # Parent to empty, preserve world position
                 lod_obj.parent = empty
                 lod_obj.matrix_parent_inverse = empty.matrix_world.inverted()
@@ -302,10 +352,9 @@ class LOD_OT_EXPORT(Operator):
          
         #──── Adding  empty to set to process export ──────────────────────
         for o in context.selected_objects:
-           if o.type == 'EMPTY':
              empties_to_export.add(o)
            elif o.type == 'MESH':
-               if o.parent is not None:
+               if o.parent is not None and o.parent.name in bpy.data.collections["LOD"].objects:
                 empties_to_export.add(o.parent)
               
         if len(original_selection) > 0 and len(empties_to_export) == 0:
@@ -412,6 +461,9 @@ class LOD_PT_Panel(Panel):
         box.label(text="Settings", icon='SETTINGS')
         box.prop(settings, "num_lods")
         box.prop(settings, "unreal_mode")
+        box.prop(settings, "merge_vertices")
+        box.prop(settings, "apply_scale_rotation")
+        box.prop(settings, "recalculate_normal")
 
         # ── LOD Level Sliders ────────────────────────────────────────────
         box2 = layout.box()
