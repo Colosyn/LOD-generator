@@ -1,7 +1,7 @@
 bl_info = {
     "name": "LOD Generator (Unreal and Unity Ready)",
     "author": "Colosyn",
-    "version": (1, 2, 0),
+    "version": (1, 3, 0),
     "blender": (3, 6, 0),
     "location": "View3D > Sidebar > LOD Gen",
     "description": "Batch LOD generation and export for Unreal and Unity",
@@ -14,7 +14,7 @@ import bpy
 from bpy.props import IntProperty, FloatProperty, PointerProperty, BoolProperty, StringProperty
 from bpy.types import PropertyGroup, Operator, Panel
 import math
-
+import bmesh
 
 # ─────────────────────────────────────────────
 #  Scene-level settings
@@ -40,15 +40,26 @@ class LODSettings(PropertyGroup):
         default = False,
     )
     
+    
+    merge_distance: FloatProperty(
+       name="Merge Distance",
+       description="Max distance between vertices to merge",
+       default=0.0001,
+       min=0.00001,
+       max=0.1,
+       step= 0.001,
+       precision=5,
+    )
+    
     apply_scale_rotation : BoolProperty(
         name = "scale & rotation",
         description = "Apply scale and rotation on mesh",
         default = False,
     ) 
     
-    recalculate_normal : BoolProperty(
-        name = "Recalculate normals",
-        description = "Tranfer normals from lod 0",
+    transfer_normals : BoolProperty(
+        name = "transfer normals",
+        description = "Transfer normals from lod 0",
         default = False,
     )
 
@@ -235,10 +246,14 @@ class LOD_OT_Generate(Operator):
             
             # ── 4. Merge dubplicate verts ───────────────────────────────── 
             if settings.merge_vertices :
-              bpy.ops.object.mode_set(mode="EDIT")
-              bpy.ops.mesh.select_all(action="SELECT")
-              bpy.ops.mesh.remove_doubles()
-              bpy.ops.object.mode_set(mode="OBJECT")
+              bm = bmesh.new()
+              bm.from_mesh(lod0.data) 
+              
+              bmesh.ops.remove_doubles(bm, verts=bm.verts, dist = settings.merge_distance )
+              
+              bm.to_mesh(lod0.data)
+              lod0.data.update()
+              bm.free()
               
              # ── 4. Apply scale & rotation ───────────────────────────────── 
             if settings.apply_scale_rotation :
@@ -276,7 +291,7 @@ class LOD_OT_Generate(Operator):
                
                
                 # ── applying data tranfer addon to recalculate normals─────────────────
-                if settings.recalculate_normal : 
+                if settings.transfer_normals : 
                    
                    if bpy.app.version < (4,1,0):
                       lod_obj.data.use_auto_smooth = True
@@ -287,6 +302,7 @@ class LOD_OT_Generate(Operator):
                    data_transfer.use_loop_data = True
                    data_transfer.loop_mapping = "POLYINTERP_LNORPROJ"
                    data_transfer.data_types_loops = {"CUSTOM_NORMAL"}
+                   data_transfer.use_object_transform = True
                 # Parent to empty, preserve world position
                 lod_obj.parent = empty
                 lod_obj.matrix_parent_inverse = empty.matrix_world.inverted()
@@ -352,6 +368,7 @@ class LOD_OT_EXPORT(Operator):
          
         #──── Adding  empty to set to process export ──────────────────────
         for o in context.selected_objects:
+           if o.type == 'EMPTY' and o.name in bpy.data.collections["LOD"].objects:
              empties_to_export.add(o)
            elif o.type == 'MESH':
                if o.parent is not None and o.parent.name in bpy.data.collections["LOD"].objects:
@@ -462,8 +479,10 @@ class LOD_PT_Panel(Panel):
         box.prop(settings, "num_lods")
         box.prop(settings, "unreal_mode")
         box.prop(settings, "merge_vertices")
+        if settings.merge_vertices:
+            box.prop(settings, "merge_distance")
         box.prop(settings, "apply_scale_rotation")
-        box.prop(settings, "recalculate_normal")
+        box.prop(settings, "transfer_normals")
 
         # ── LOD Level Sliders ────────────────────────────────────────────
         box2 = layout.box()
