@@ -2,21 +2,13 @@
 Batch LOD generation and FBX export for Unreal Engine and Unity pipelines, built for game artists.
 
 ---
-## Changelog
 
-### v1.2.0
-- Added merge vertices option — removes duplicate verts on LOD0 before decimation
-- Added apply scale & rotation option — applies transforms on LOD0 before generation
-- Added recalculate normals option — transfers custom normals from LOD0 to all LOD levels via Data Transfer modifier (version-gated for Blender 3.6 compatibility)
-- Fixed export collecting non-LOD empties and meshes with foreign parents into export set
+## What's New in v1.3.0
+- Renamed **Recalculate Normals** → **Transfer Normals** (more accurate description of what it does)
+- Merge distance is now exposed as a configurable field (was hardcoded at 0.0001)
+- Added `use_object_transform` to Data Transfer modifier for correct world-space normal projection
 
-### v1.1.0
-- Fixed FBX export failing with Blender-relative paths (//)
-- Fixed export crash when destination folder doesn't exist
-- Added validation for empty export path field
-
-### v1.0.0
-- Initial release
+See [CHANGELOG.md](CHANGELOG.md) for full version history.
 
 ---
 
@@ -30,7 +22,7 @@ Batch LOD generation and FBX export for Unreal Engine and Unity pipelines, built
 - Optional per-asset folder creation on export
 - Source mesh preserved and organized automatically
 - High poly detection — confirmation popup before generating on meshes above a configurable polygon threshold. Threshold adjustable in addon preferences
-- Merge vertices, apply transforms, and recalculate normals options for pre-generation cleanup
+- Merge vertices (with configurable distance), apply transforms, and transfer normals options for pre-generation cleanup
 
 ---
 
@@ -91,4 +83,4 @@ MIT — free to use, modify, and distribute.
 
 ---
 
-Made by [Colosyn](https://linktr.ee/colosyn)
+Made by [Colosyn](https://colosyn.com)
