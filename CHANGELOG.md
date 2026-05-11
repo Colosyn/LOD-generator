@@ -1,5 +1,9 @@
 # Changelog
-
+## [1.4.0]
+- Renamed add-on to LOD Architect Lite 
+- Replaced Unreal toggle with a Target Engine dropdown (Unreal / Unity) 
+- Fixed: Hidden child objects are now automatically unhidden before export
+- 
 ## [1.3.0]
 - Renamed `recalculate_normals` → `transfer_normals` (accurately reflects Data Transfer behavior)
 - Merge distance is now a configurable property in the panel (range 0.00001–0.1, was hardcoded at 0.0001)
