@@ -7,6 +7,7 @@ Batch LOD generation and FBX export for Unreal Engine and Unity pipelines, built
 - Renamed add-on to **LOD Architect Lite**
 - Replaced Unreal/Unity toggle with a **Target Engine dropdown** (Unreal / Unity)
 - Fixed: Hidden child objects are now automatically unhidden before export
+
 See [CHANGELOG.md](CHANGELOG.md) for full version history.
  
 ---
