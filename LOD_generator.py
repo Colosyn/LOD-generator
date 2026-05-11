@@ -1,9 +1,9 @@
 bl_info = {
-    "name": "LOD Generator (Unreal and Unity Ready)",
+    "name": "LOD Architect Lite",
     "author": "Colosyn",
-    "version": (1, 3, 0),
+    "version": (1, 4, 0),
     "blender": (3, 6, 0),
-    "location": "View3D > Sidebar > LOD Gen",
+    "location": "View3D > Sidebar > LOD Arch LT",
     "description": "Batch LOD generation and export for Unreal and Unity",
     "category": "Object",
 }
@@ -11,7 +11,7 @@ bl_info = {
 from pathlib import Path
 import re
 import bpy
-from bpy.props import IntProperty, FloatProperty, PointerProperty, BoolProperty, StringProperty
+from bpy.props import IntProperty, FloatProperty, PointerProperty, BoolProperty, StringProperty, EnumProperty
 from bpy.types import PropertyGroup, Operator, Panel
 import math
 import bmesh
@@ -28,10 +28,15 @@ class LODSettings(PropertyGroup):
         default=3,
     )
     
-    unreal_mode: BoolProperty(
-        name="unreal export",
-        description= "Enable Unreal Naming Convention and property",
-        default= True,
+    engine_select: EnumProperty(
+        name="Engine",
+        description= "Choose between unreal and unity mode",
+        items = [
+            ("UNREAL", "Unreal", "For unreal engine"),
+            ("UNITY", "Unity", "For unity"),
+       
+        ],
+         default="UNREAL"
     )
     
     merge_vertices : BoolProperty(
@@ -169,7 +174,7 @@ class LOD_OT_Generate(Operator):
             original_name = re.sub(r"_LOW$","", original_name,flags=re.IGNORECASE)
           
           
-            if settings.unreal_mode:
+            if settings.engine_select == "UNREAL":
              stripped = re.sub(r"^SM_","", original_name,flags=re.IGNORECASE)
              original_name = "SM_" + stripped
              
@@ -210,7 +215,7 @@ class LOD_OT_Generate(Operator):
             empty.empty_display_type = 'PLAIN_AXES'
             empty.empty_display_size = 0.5
             context.collection.objects.link(empty)
-            # Place empty at object's world origin
+            
             empty.matrix_world = world_matrix
             
             old_collection = list(empty.users_collection)
@@ -222,10 +227,10 @@ class LOD_OT_Generate(Operator):
                 if col != LOD_col: 
                  col.objects.unlink(empty)
 
-            if settings.unreal_mode:
+            if settings.engine_select == "UNREAL":
                  empty["fbx_type"] = "LodGroup"
 
-            # ── 3 Making LOD0, parent to empty ──────────────
+            # ── 2. Making LOD0, parent to empty ──────────────
             lod0 = obj.copy()
             lod0.data = obj.data.copy()
             lod0.name=f"{original_name}_LOD0"
@@ -244,7 +249,7 @@ class LOD_OT_Generate(Operator):
             context.view_layer.objects.active = lod0
             lod0.select_set(True)
             
-            # ── 4. Merge dubplicate verts ───────────────────────────────── 
+            # ── 3. Merge dubplicate verts ───────────────────────────────── 
             if settings.merge_vertices :
               bm = bmesh.new()
               bm.from_mesh(lod0.data) 
@@ -264,7 +269,7 @@ class LOD_OT_Generate(Operator):
 
             
 
-            # ── 4. Generate LOD1 … LODn ─────────────────────────────────
+            # ── 5. Generate LOD1 … LODn ─────────────────────────────────
             for i in range(num_lods):
                 # User sets how much geometry to KEEP directly (0.75 = keep 75%)
                 keep_ratio = getattr(settings, LOD_PROP_NAMES[i])  if i < len(keep_values) else 0.5
@@ -383,17 +388,43 @@ class LOD_OT_EXPORT(Operator):
             if o.type == 'EMPTY':
               empties_to_export.add(o) 
             
-        for o in bpy.data.objects:
-           o.select_set(False)
-           
-        #──── Selecting all children of empty ──────────────────────   
+        #Selecting all children of empty
         for obj in empties_to_export:
             original_location = obj.location.copy()
+
+            #moving empty to world origin so export position is consistant on across all engine
+
             obj.location = (0, 0, 0)
             obj.select_set(True)
+
+            visibility_states = {}
+            #slecting empty and unhiding it if hidden
+
+            if obj.name in context.view_layer.objects:
+                vp_hidden = obj.hide_viewport
+                local_hidden = obj.hide_get()
+
+                visibility_states[obj] = (vp_hidden, local_hidden)
+                if vp_hidden:
+                    obj.hide_viewport = False
+                if local_hidden:
+                    obj.hide_set(False)
+                obj.select_set(True)
+
+            #Selecting childer and unhiding them if hidden
+
             for y in obj.children:
-                y.select_set(True)
-            context.view_layer.objects.active = obj
+                if y.name in context.view_layer.objects:
+                    vp_hidden = y.hide_viewport
+                    local_hidden = y.hide_get()
+                    visibility_states[y] = (vp_hidden,local_hidden)
+                    if vp_hidden:
+                        y.hide_viewport = False
+                    if local_hidden:
+                        y.hide_set(False)
+                    y.select_set(True)
+                else:
+                    self.report({'WARNING'}, f"Skipped '{y.name}': Not in active View Layer.")
             
             if len(obj.children) == 0:
                 self.report({'WARNING'},f"{obj.name} has no LOD(s)")
@@ -413,8 +444,8 @@ class LOD_OT_EXPORT(Operator):
                 self.report({'WARNING'},f"{obj.name}.fbx already exists, overwriting")
                 
     
-                            #──── Unreal export settings ──────────────────────   
-            if settings.unreal_mode:
+             #──── Unreal export settings ──────────────────────   
+            if settings.engine_select == "UNREAL":
                 bpy.ops.export_scene.fbx(
                        filepath=str(export_path),
                        use_selection=True,
@@ -428,15 +459,16 @@ class LOD_OT_EXPORT(Operator):
                       )
                       
             #──── Unity export settings ──────────────────────         
-            else:
+            elif settings.engine_select == "UNITY":
                  bpy.ops.export_scene.fbx(
                        filepath=str(export_path),
                        use_selection=True,
-                       axis_forward='Z',
+                       axis_forward='-Z',
                        axis_up='Y',
                        use_custom_props=False,
                        use_triangles=True,
                        apply_unit_scale=True,
+                       bake_space_transform=True,
                        )   
                        
             obj.location = original_location
@@ -445,11 +477,24 @@ class LOD_OT_EXPORT(Operator):
                
             exported += 1
             
+            #restore hidden states back to how they were
+
+            for item, (vp, local) in visibility_states.items():
+                item.hide_viewport = vp
+                if local:
+                    item.hide_set(True)    
             
-        for o in  original_selection:
-             o.select_set(True)
-             
-        context.view_layer.objects.active =original_active 
+        for o in original_selection:
+            if o.name in context.view_layer.objects:
+                if not o.hide_get() and not o.hide_viewport:
+                    o.select_set(True)
+
+        try:
+            if original_active is not None and original_active.name in context.view_layer.objects:
+                if not original_active.hide_get() and not original_active.hide_viewport:
+                    context.view_layer.objects.active = original_active
+        except RuntimeError:
+            pass 
          
         self.report({'INFO'}, f"Exported {exported} group(s)")
         return {'FINISHED'}
@@ -462,11 +507,11 @@ class LOD_OT_EXPORT(Operator):
 #  UI Panel
 # ─────────────────────────────────────────────
 class LOD_PT_Panel(Panel):
-    bl_label = "LOD Generator"
+    bl_label = "LOD Architect Lite"
     bl_idname = "LOD_PT_panel"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = 'LOD Gen'
+    bl_category = 'LOD Arch LT'
 
     def draw(self, context):
         layout = self.layout
@@ -477,7 +522,7 @@ class LOD_PT_Panel(Panel):
         box = layout.box()
         box.label(text="Settings", icon='SETTINGS')
         box.prop(settings, "num_lods")
-        box.prop(settings, "unreal_mode")
+        box.prop(settings, "engine_select")
         box.prop(settings, "merge_vertices")
         if settings.merge_vertices:
             box.prop(settings, "merge_distance")
@@ -513,10 +558,10 @@ class LOD_PT_Panel(Panel):
         box3.prop(settings, "file_path")
         box3.prop(settings, "make_folder")
         
-        if settings.unreal_mode:
+        if settings.engine_select == "UNREAL":
             layout.separator()
             layout.operator("object.lod_export", text="Export for unreal", icon='EXPORT')
-        else:
+        elif settings.engine_select == "UNITY":
             layout.separator()
             layout.operator("object.lod_export", text="Export for unity", icon='EXPORT')
             
@@ -537,7 +582,24 @@ class LODAddonPreferences(bpy.types.AddonPreferences):
     )
 
     def draw(self, prefs):
-        self.layout.prop(self, "poly_threshold")
+        
+        layout = self.layout
+        
+        split = layout.split(factor= 0.4)
+        split.label(text="website")
+        split.operator("wm.url_open", text="Visit website", icon="URL").url = "https://colosyn.com"
+        
+        
+        split = layout.split(factor= 0.4)
+        split.label(text="Upgrade to LOD Architect")
+        split.operator("wm.url_open", text="Upgrade", icon="DOCUMENTS").url = "https://colosyn.gumroad.com/l/lod-architect"
+
+        split = layout.split(factor= 0.4)
+        split.label(text="Support")
+        split.label(text= "support@colosyn.com",)
+        
+        
+        layout.prop(self, "poly_threshold")
             
 
 
